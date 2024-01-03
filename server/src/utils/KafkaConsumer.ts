@@ -1,5 +1,8 @@
 import kafka from "../configs/kafka";
 import { connectToRedis, redis } from "./functions";
+import { KafkaMessage } from 'kafkajs';
+
+const consumer = kafka.consumer({ groupId: 'storeInRedisGroup' });
 
 interface MissileData {
     source: string;
@@ -13,46 +16,54 @@ const processMessage = async (message: MissileData) => {
         const { source, destination, missileAmount, timestamp } = message;
         console.log(message);
 
-        const existKey = await redis.exists(`country{${source}}:dist{${destination}}`);
-        if (!existKey) {
+        const countryKey = `country{${source}}`;
+        const regionKey = `dist{${destination}}`;
+
+        const existingData = await redis.json.get(countryKey);
+        console.log(existingData);
+        
+        if (!existingData) {
             await redis.json.set(
-                `country{${source}}:dist{${destination}}`,
+                countryKey,
                 ".",
                 JSON.stringify({
-                    Rounds: 1,
-                    missileAmount,
-                    creationTime: timestamp,
-                    lastUpdateTime: timestamp,
+                    [regionKey]: {
+                        Rounds: 1,
+                        missileAmount,
+                        creationTime: timestamp,
+                        lastUpdateTime: timestamp,
+                    }
                 })
             );
         } else {
-            await redis
-                .multi()
-                .json.numIncrBy(`country{${source}}:dist{${destination}}`, "$.Rounds", 1)
-                .json.numIncrBy(`country{${source}}:dist{${destination}}`, "$.missileAmount", missileAmount)
-                .json.merge(`country{${source}}:dist{${destination}}`, "$.lastUpdateTime", timestamp)
-                .exec();
+            const parsedData = JSON.parse(existingData as string);
+            parsedData[regionKey] = {
+                Rounds: 1,
+                missileAmount,
+                creationTime: timestamp,
+                lastUpdateTime: timestamp,
+            };
+
+            await redis.json.set(countryKey, ".", JSON.stringify(parsedData));
         }
 
-        console.log(`Data for ${source} updated successfully.`);
+        console.log(`Data for ${countryKey}:${regionKey} updated successfully.`);
     } catch (error) {
         console.error(`Error processing message: ${error}`);
     }
 };
 
-
 const processMissileData = async () => {
-    const consumer = kafka.consumer({ groupId: "a" });
-    await connectToRedis()
-    await consumer.subscribe({ topic: 'missileDataPSI' });
-    
+    await consumer.subscribe({ topic: 'missileDataPSI', fromBeginning: true });
+    await connectToRedis();
+
     await consumer.run({
         eachMessage: async ({ message }) => {
             try {
                 const valueString = message.value instanceof Buffer
                     ? message.value.toString('utf-8')
                     : '';
-                const value: MissileData = JSON.parse(valueString);
+                const value = JSON.parse(valueString);
                 console.log(value);
 
                 await processMessage(value);
@@ -62,7 +73,6 @@ const processMissileData = async () => {
         },
     });
 
-    await consumer.disconnect();
 };
 
 processMissileData();

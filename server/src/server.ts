@@ -26,7 +26,7 @@ const port = process.env.PORT
 const server = new ApolloServer({
     typeDefs,
     resolvers,
-
+    
     formatError: (formattedError, error) => {
         if (
             formattedError.extensions?.code ===

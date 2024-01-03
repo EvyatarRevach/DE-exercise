@@ -20,17 +20,13 @@ const getData = async () => {
 
 const sendKafkaMessage = async (producer: Producer, topic: string, message: string) => {
     try {
-        // const admin = kafka.admin()
-        // await admin.connect()
-        // const listTopics = await admin.listTopics()
-        // console.log(listTopics);
 
         await producer.connect();
         console.log('producer connect');
 
         await producer.send({ topic, messages: [{ value: message }] });
         await producer.disconnect();
-        return
+        
     } catch (error) {
         return Promise.reject(error);
     }
@@ -49,7 +45,7 @@ const initializationData = async () => {
 
 
     await sendKafkaMessage(producer, 'missileDataPSI', JSON.stringify(message));
-    console.log('send massage to kafka');
+    console.log('sendd massage to kafka');
 
 }
 
